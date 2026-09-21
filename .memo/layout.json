@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "nodePositionsByFlow": {
+    "flow_ba6c1341c29f": {
+      "blk_6b8ddf0bea2c": {
+        "x": 38,
+        "y": 85.40625,
+        "width": 141,
+        "height": 91
+      },
+      "blk_310e1e541258": {
+        "x": 231.5,
+        "y": 88.40625,
+        "width": 275,
+        "height": 99
+      },
+      "blk_3504dad7da32": {
+        "x": 532.5,
+        "y": 56.40625
+      },
+      "blk_d4fbc3630e0a": {
+        "x": 70.5,
+        "y": 271.40625
+      }
+    }
+  }
+}

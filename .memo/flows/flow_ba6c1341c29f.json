@@ -1,12 +1,21 @@
 {
   "version": 2,
   "id": "flow_ba6c1341c29f",
-  "title": "구상",
+  "title": "앱 철학",
   "blocks": [
     "blk_6b8ddf0bea2c",
     "blk_310e1e541258",
     "blk_3504dad7da32",
-    "blk_d4fbc3630e0a"
+    "blk_d4fbc3630e0a",
+    "blk_258d9496fee3",
+    "blk_c64eacef79c5",
+    "blk_a661d904e383"
   ],
-  "links": []
+  "links": [
+    {
+      "id": "link_5ca36dc9bcb5",
+      "source": "blk_c64eacef79c5",
+      "target": "blk_a661d904e383"
+    }
+  ]
 }

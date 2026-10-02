@@ -12,8 +12,16 @@ import { createChatbot, askCodex } from './chatbot.mjs';
 test('Discord input crosses MCP, CLI replies return to the original message, same session continues', async () => {
   const inbox = createInbox();
   const posts = [];
+  let typingCount = 0;
   const server = createServer({ DISCORD_BOT_TOKEN: 'fake', DISCORD_CHANNEL_ID: '123456789012345678' }, async (url, options) => {
     assert.equal(options.method, 'POST');
+    if (url.endsWith('/typing')) {
+      assert.equal(url, 'https://discord.com/api/v10/channels/123456789012345678/typing');
+      assert.equal(options.body, undefined);
+      assert.equal(options.headers.Authorization, 'Bot fake');
+      typingCount++;
+      return new Response(null, { status: 204 });
+    }
     assert.equal(url, 'https://discord.com/api/v10/channels/123456789012345678/messages');
     posts.push(JSON.parse(options.body));
     return new Response(JSON.stringify({ id: 'reply' }));
@@ -23,11 +31,12 @@ test('Discord input crosses MCP, CLI replies return to the original message, sam
   await server.connect(b); await client.connect(a);
   const sessions = [];
   const receive = createChatbot(client, async (content, session) => {
+    assert.equal(typingCount, sessions.length + 1);
     sessions.push(session);
     return `CLI 답변: ${content}`;
   });
   try {
-    assert.deepEqual((await client.listTools()).tools.map(t => t.name), ['discord_send_message', 'discord_wait_message']);
+    assert.deepEqual((await client.listTools()).tools.map(t => t.name), ['discord_send_message', 'discord_send_typing', 'discord_wait_message']);
     inbox.push({ id: '123456789012345679', content: '안녕' }); await receive();
     inbox.push({ id: '123456789012345680', content: '다음 질문' }); await receive();
     assert.equal(sessions[0], sessions[1]);
@@ -38,6 +47,52 @@ test('Discord input crosses MCP, CLI replies return to the original message, sam
     assert.equal((await client.callTool({ name: 'discord_send_message', arguments: { content: ' ' } })).isError, true);
     assert.equal(posts.length, 2);
   } finally { await client.close(); await server.close(); }
+});
+
+test('typing repeats while CLI is pending and stops after success or failure', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  for (const fails of [false, true]) {
+    const calls = [];
+    let finish;
+    const answer = new Promise((resolve, reject) => {
+      finish = () => fails ? reject(new Error('CLI failed')) : resolve('reply');
+    });
+    const client = { async callTool({ name }) {
+      calls.push(name);
+      return { content: [{ type: 'text', text: JSON.stringify(
+        name === 'discord_wait_message' ? { id: '123456789012345679', content: 'hello' } : null,
+      ) }] };
+    } };
+    const receiving = createChatbot(client, () => answer)();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.filter(name => name === 'discord_send_typing').length, 1);
+    t.mock.timers.tick(8000);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.filter(name => name === 'discord_send_typing').length, 2);
+    finish();
+    if (fails) await assert.rejects(receiving, /CLI failed/);
+    else await receiving;
+    const completedCalls = calls.length;
+    t.mock.timers.tick(16000);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.length, completedCalls);
+    assert.equal(calls.includes('discord_send_message'), !fails);
+  }
+});
+
+test('typing API failure does not prevent a CLI reply', async t => {
+  t.mock.method(console, 'error', () => {});
+  const calls = [];
+  const client = { async callTool({ name }) {
+    calls.push(name);
+    if (name === 'discord_send_typing') return { isError: true, content: [{ type: 'text', text: 'Discord HTTP 403' }] };
+    return { content: [{ type: 'text', text: JSON.stringify(
+      name === 'discord_wait_message' ? { id: '123456789012345679', content: 'hello' } : null,
+    ) }] };
+  } };
+  await createChatbot(client, async () => 'reply')();
+  assert.deepEqual(calls, ['discord_wait_message', 'discord_send_typing', 'discord_send_message']);
+  assert.equal(console.error.mock.callCount(), 1);
 });
 
 test('Windows CLI starts/resumes with stdin input and no Discord credentials',

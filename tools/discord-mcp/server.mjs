@@ -8,12 +8,12 @@ import { startGateway } from './gateway.mjs';
 import { createInbox } from './inbox.mjs';
 
 function createDiscordRequest(env, fetchApi) {
-  return async function request(body) {
+  return async function request(body, endpoint = 'messages') {
     const token = env.DISCORD_BOT_TOKEN?.trim();
     const channel = env.DISCORD_CHANNEL_ID?.trim();
     if (!token || /\s/.test(token)) throw new Error('DISCORD_BOT_TOKEN을 설정하세요.');
     if (!/^\d{17,20}$/.test(channel ?? '')) throw new Error('DISCORD_CHANNEL_ID에 채널 ID를 설정하세요.');
-    const response = await fetchApi(`https://discord.com/api/v10/channels/${channel}/messages`, {
+    const response = await fetchApi(`https://discord.com/api/v10/channels/${channel}/${endpoint}`, {
       method: 'POST',
       headers: { Authorization: `Bot ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -25,7 +25,7 @@ function createDiscordRequest(env, fetchApi) {
         : '토큰, 봇의 채널 접근 권한 및 채널 ID를 확인하세요.';
       throw new Error(`Discord HTTP ${response.status}: ${hint}`);
     }
-    return response.json();
+    return response.status === 204 ? null : response.json();
   };
 }
 
@@ -51,6 +51,11 @@ export function createServer(env = process.env, fetchApi = fetch, inbox = create
     content, allowed_mentions: { parse: [], replied_user: false },
     ...(reply_to ? { message_reference: { message_id: reply_to, fail_if_not_exists: false } } : {}),
   })));
+  server.registerTool('discord_send_typing', {
+    description: '설정된 Discord 채널에 입력 중 표시를 보냅니다. 응답을 기다리는 동안 주기적으로 호출하세요.',
+    inputSchema: {},
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  }, () => result(() => request(undefined, 'typing')));
   server.registerTool('discord_wait_message', {
     description: 'Gateway로 감지한 새 Discord 메시지 한 개를 수신합니다. 비어 있으면 최대 25초 대기 후 null을 반환합니다. 사용자가 Discord 수신 처리를 요청했을 때 호출하고, 결과는 discord_send_message의 reply_to에 메시지 ID를 넣어 답장하세요. 자동으로 CLI 턴을 시작하지 않습니다.',
     inputSchema: { timeout_ms: z.number().int().min(0).max(25000).default(25000) },

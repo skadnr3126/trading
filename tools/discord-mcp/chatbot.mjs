@@ -79,7 +79,19 @@ export function createChatbot(client, ask = askCodex, signal) {
     const message = await callDiscord(client, 'discord_wait_message', { timeout_ms: 25000 });
     if (!message || signal?.aborted) return;
     console.log(`Discord 수신: ${message.id} → CLI`);
-    const reply = await ask(message.content, session, signal);
+    let typingPending = false;
+    const sendTyping = async () => {
+      if (typingPending || signal?.aborted) return;
+      typingPending = true;
+      try { await callDiscord(client, 'discord_send_typing', {}); }
+      catch (error) { console.error(`Discord 입력 중 표시 실패: ${error.message}`); }
+      finally { typingPending = false; }
+    };
+    await sendTyping();
+    const typingTimer = setInterval(sendTyping, 8000);
+    let reply;
+    try { reply = await ask(message.content, session, signal); }
+    finally { clearInterval(typingTimer); }
     // No automatic POST retry: a timeout may mean the reply was already delivered.
     for (let start = 0; start < reply.length;) {
       let end = Math.min(start + 1900, reply.length);

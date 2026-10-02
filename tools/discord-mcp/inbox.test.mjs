@@ -17,3 +17,13 @@ test('inbox retains order, waits for events, times out and unblocks on shutdown'
   inbox.close();
   assert.equal(await closing, null);
 });
+
+test('MCP observation keeps the latest 100 messages, bot work queue rejects overflow', async () => {
+  const observer = createInbox({ dropOldest: true });
+  const bot = createInbox();
+  for (let id = 0; id < 100; id++) { observer.push({ id }); bot.push({ id }); }
+  observer.push({ id: 100 });
+  assert.deepEqual(await observer.next(0), { id: 1 });
+  assert.throws(() => bot.push({ id: 100 }), /가득/);
+  assert.deepEqual(await bot.next(0), { id: 0 });
+});

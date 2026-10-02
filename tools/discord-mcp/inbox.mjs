@@ -1,4 +1,4 @@
-export function createInbox() {
+export function createInbox({ dropOldest = false } = {}) {
   const messages = [];
   let waiter;
   return {
@@ -9,7 +9,10 @@ export function createInbox() {
         resolve(message);
       } else {
         // ponytail: keep 100 pending messages in memory; persist if restart recovery is needed.
-        if (messages.length === 100) throw new Error('Discord 수신함이 가득 찼습니다. 수신 도구로 메시지를 처리하세요.');
+        if (messages.length === 100) {
+          if (!dropOldest) throw new Error('Discord 수신함이 가득 찼습니다. 수신 도구로 메시지를 처리하세요.');
+          messages.shift();
+        }
         messages.push(message);
       }
     },

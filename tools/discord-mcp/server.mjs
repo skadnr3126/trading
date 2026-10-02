@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { startGateway } from './gateway.mjs';
 import { createInbox } from './inbox.mjs';
+import { createChatbot, askCodex } from './chatbot.mjs';
 
 function createDiscordRequest(env, fetchApi) {
   return async function request(body, endpoint = 'messages') {
@@ -64,19 +65,56 @@ export function createServer(env = process.env, fetchApi = fetch, inbox = create
   return server;
 }
 
+export async function startServer({ env = process.env, fetchApi = fetch,
+  transport = new StdioServerTransport(), gatewayClient, ask = askCodex } = {}) {
+  const inbox = createInbox({ dropOldest: true });
+  const botInbox = createInbox();
+  const controller = new AbortController();
+  const request = createDiscordRequest(env, fetchApi);
+  const server = createServer(env, fetchApi, inbox);
+  await server.connect(transport);
+  const gateway = startGateway(env, gatewayClient, console.error, message => {
+    botInbox.push(message);
+    inbox.push(message);
+  });
+  const receive = createChatbot({
+    next: timeout => botInbox.next(timeout),
+    typing: () => request(undefined, 'typing'),
+    send: (content, id) => request({ content, allowed_mentions: { parse: [], replied_user: false },
+      message_reference: { message_id: id, fail_if_not_exists: false } }),
+  }, ask, controller.signal);
+  const done = (async () => {
+    while (!controller.signal.aborted) {
+      try { await receive(); }
+      catch (error) {
+        if (!controller.signal.aborted) console.error(error.message.replaceAll(env.DISCORD_BOT_TOKEN || '\0', '[redacted]'));
+      }
+    }
+  })();
+  let closing;
+  const shutdown = () => {
+    if (controller.signal.aborted) return closing;
+    controller.abort();
+    inbox.close();
+    botInbox.close();
+    closing = (async () => {
+      try { await gateway.destroy(); }
+      finally { await server.close(); }
+      await done;
+    })();
+    return closing;
+  };
+  server.server.onclose = () => { void shutdown(); };
+  return { shutdown, done };
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const envPath = fileURLToPath(new URL('.env', import.meta.url));
   if (existsSync(envPath)) process.loadEnvFile(envPath);
-  const inbox = createInbox();
-  const server = createServer(process.env, fetch, inbox);
-  await server.connect(new StdioServerTransport());
-  const gateway = startGateway(process.env, undefined, console.error, message => inbox.push(message));
-  const shutdown = async () => {
-    inbox.close();
-    await gateway.destroy();
-    await server.close();
-  };
-  process.stdin.once('end', shutdown);
-  process.once('SIGINT', () => { void shutdown().then(() => process.exit(0)); });
-  process.once('SIGTERM', () => { void shutdown().then(() => process.exit(0)); });
+  const { shutdown } = await startServer();
+  const stop = () => { void shutdown().catch(error => { console.error(error.message); process.exitCode = 1; }); };
+  process.stdin.once('end', stop);
+  process.stdin.once('close', stop);
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
 }

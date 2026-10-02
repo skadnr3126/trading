@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "chat": "node chatbot.mjs",
+    "chat": "node server.mjs",
     "test": "node --test *.test.mjs"
   },
   "dependencies": {

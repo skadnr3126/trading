@@ -9,6 +9,20 @@ import { createServer } from './server.mjs';
 import { createInbox } from './inbox.mjs';
 import { createChatbot, askCodex } from './chatbot.mjs';
 
+async function callDiscord(client, name, args) {
+  const result = await client.callTool({ name, arguments: args });
+  if (result.isError) throw new Error(result.content?.[0]?.text ?? 'Discord MCP 오류');
+  return JSON.parse(result.content[0].text);
+}
+
+function discordTools(client) {
+  return {
+    next: timeout_ms => callDiscord(client, 'discord_wait_message', { timeout_ms }),
+    typing: () => callDiscord(client, 'discord_send_typing', {}),
+    send: (content, reply_to) => callDiscord(client, 'discord_send_message', { content, reply_to }),
+  };
+}
+
 test('Discord input crosses MCP, CLI replies return to the original message, same session continues', async () => {
   const inbox = createInbox();
   const posts = [];
@@ -30,7 +44,7 @@ test('Discord input crosses MCP, CLI replies return to the original message, sam
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b); await client.connect(a);
   const sessions = [];
-  const receive = createChatbot(client, async (content, session) => {
+  const receive = createChatbot(discordTools(client), async (content, session) => {
     assert.equal(typingCount, sessions.length + 1);
     sessions.push(session);
     return `CLI 답변: ${content}`;
@@ -63,7 +77,7 @@ test('typing repeats while CLI is pending and stops after success or failure', a
         name === 'discord_wait_message' ? { id: '123456789012345679', content: 'hello' } : null,
       ) }] };
     } };
-    const receiving = createChatbot(client, () => answer)();
+    const receiving = createChatbot(discordTools(client), () => answer)();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(calls.filter(name => name === 'discord_send_typing').length, 1);
     t.mock.timers.tick(8000);
@@ -90,9 +104,9 @@ test('typing API failure does not prevent a CLI reply', async t => {
       name === 'discord_wait_message' ? { id: '123456789012345679', content: 'hello' } : null,
     ) }] };
   } };
-  await createChatbot(client, async () => 'reply')();
+  await createChatbot(discordTools(client), async () => 'reply')();
   assert.deepEqual(calls, ['discord_wait_message', 'discord_send_typing', 'discord_send_message']);
-  assert.equal(console.error.mock.callCount(), 1);
+  assert.equal(console.error.mock.calls.filter(call => call.arguments[0].startsWith('Discord 입력 중 표시 실패:')).length, 1);
 });
 
 test('Windows CLI starts/resumes with stdin input and no Discord credentials',

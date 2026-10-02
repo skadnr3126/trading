@@ -1,0 +1,5 @@
+[mcp_servers.discord]
+command = "node"
+args = ["D:/trading/tools/discord-mcp/server.mjs"]
+cwd = "D:/trading/tools/discord-mcp"
+env_vars = ["DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID"]

@@ -1,0 +1,77 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+import { startGateway } from './gateway.mjs';
+import { createInbox } from './inbox.mjs';
+
+function createDiscordRequest(env, fetchApi) {
+  return async function request(body) {
+    const token = env.DISCORD_BOT_TOKEN?.trim();
+    const channel = env.DISCORD_CHANNEL_ID?.trim();
+    if (!token || /\s/.test(token)) throw new Error('DISCORD_BOT_TOKEN을 설정하세요.');
+    if (!/^\d{17,20}$/.test(channel ?? '')) throw new Error('DISCORD_CHANNEL_ID에 채널 ID를 설정하세요.');
+    const response = await fetchApi(`https://discord.com/api/v10/channels/${channel}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bot ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      const hint = response.status === 429
+        ? `요청 제한. Retry-After: ${response.headers.get('retry-after') ?? '확인 필요'}`
+        : '토큰, 봇의 채널 접근 권한 및 채널 ID를 확인하세요.';
+      throw new Error(`Discord HTTP ${response.status}: ${hint}`);
+    }
+    return response.json();
+  };
+}
+
+export function createServer(env = process.env, fetchApi = fetch, inbox = createInbox()) {
+  const server = new McpServer({ name: 'trading-discord', version: '0.1.0' });
+  const request = createDiscordRequest(env, fetchApi);
+
+  async function result(action) {
+    try {
+      return { content: [{ type: 'text', text: JSON.stringify(await action()) }] };
+    } catch (error) {
+      // Never return credentials or Discord response bodies in tool errors.
+      const message = error instanceof Error ? error.message : 'Discord 요청 실패';
+      return { isError: true, content: [{ type: 'text', text: message.replaceAll(env.DISCORD_BOT_TOKEN || '\0', '[redacted]') }] };
+    }
+  }
+
+  server.registerTool('discord_send_message', {
+    description: '설정된 Discord 채널에 메시지를 전송합니다. 사용자에게 전송을 요청받은 경우에만 사용하세요. 멘션 알림은 비활성화됩니다.',
+    inputSchema: { content: z.string().trim().min(1).max(2000), reply_to: z.string().regex(/^\d{17,20}$/).optional() },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  }, ({ content, reply_to }) => result(() => request({
+    content, allowed_mentions: { parse: [], replied_user: false },
+    ...(reply_to ? { message_reference: { message_id: reply_to, fail_if_not_exists: false } } : {}),
+  })));
+  server.registerTool('discord_wait_message', {
+    description: 'Gateway로 감지한 새 Discord 메시지 한 개를 수신합니다. 비어 있으면 최대 25초 대기 후 null을 반환합니다. 사용자가 Discord 수신 처리를 요청했을 때 호출하고, 결과는 discord_send_message의 reply_to에 메시지 ID를 넣어 답장하세요. 자동으로 CLI 턴을 시작하지 않습니다.',
+    inputSchema: { timeout_ms: z.number().int().min(0).max(25000).default(25000) },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  }, ({ timeout_ms }) => result(() => inbox.next(timeout_ms)));
+  return server;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  const envPath = fileURLToPath(new URL('.env', import.meta.url));
+  if (existsSync(envPath)) process.loadEnvFile(envPath);
+  const inbox = createInbox();
+  const server = createServer(process.env, fetch, inbox);
+  await server.connect(new StdioServerTransport());
+  const gateway = startGateway(process.env, undefined, console.error, message => inbox.push(message));
+  const shutdown = async () => {
+    inbox.close();
+    await gateway.destroy();
+    await server.close();
+  };
+  process.stdin.once('end', shutdown);
+  process.once('SIGINT', () => { void shutdown().then(() => process.exit(0)); });
+  process.once('SIGTERM', () => { void shutdown().then(() => process.exit(0)); });
+}

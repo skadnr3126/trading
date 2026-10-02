@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { test } from 'node:test';
+import { Events } from 'discord.js';
+import { startGateway } from './gateway.mjs';
+
+test('Gateway login, readiness, errors and missing credentials', async () => {
+  const client = new EventEmitter();
+  const logs = [];
+  let destroyed = 0;
+  let loggedIn;
+  client.destroy = async () => { destroyed++; };
+  client.login = async token => { loggedIn = token; };
+  client.isReady = () => true;
+  const received = [];
+  startGateway({ DISCORD_BOT_TOKEN: ' secret ', DISCORD_CHANNEL_ID: 'channel' }, client, text => logs.push(text), message => received.push(message));
+  assert.equal(loggedIn, 'secret');
+  client.emit(Events.ClientReady);
+  assert.match(logs[0], /온라인/);
+  const message = { id: '1', channelId: 'channel', content: 'hello', type: 0, author: { id: 'user', username: 'name', bot: false } };
+  for (const ignored of [{ ...message, channelId: 'other' }, { ...message, author: { bot: true } }, { ...message, webhookId: 'hook' }, { ...message, content: '' }]) client.emit(Events.MessageCreate, ignored);
+  client.emit(Events.MessageCreate, message);
+  assert.deepEqual(received, [{ id: '1', content: 'hello' }]);
+  client.emit(Events.Error, new Error('secret'));
+  assert.ok(logs.every(text => !text.includes('secret')));
+  await client.destroy();
+  assert.equal(destroyed, 1);
+  client.login = async () => { throw new Error('secret'); };
+  startGateway({ DISCORD_BOT_TOKEN: 'secret' }, client, text => logs.push(text));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(destroyed, 2);
+  assert.match(logs.at(-1), /로그인 실패/);
+  loggedIn = undefined;
+  startGateway({}, client, text => logs.push(text));
+  assert.equal(loggedIn, undefined);
+});

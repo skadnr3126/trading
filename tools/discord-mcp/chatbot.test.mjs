@@ -1,13 +1,28 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from './server.mjs';
 import { createInbox } from './inbox.mjs';
-import { createChatbot, askCodex } from './chatbot.mjs';
+import { createChatbot, askCodex, findWorkspaceDirectory } from './chatbot.mjs';
+
+test('workspace search uses the nearest .codex directory and stops at the filesystem root', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'discord-workspace-'));
+  try {
+    const nested = join(directory, 'tools', 'bridge');
+    await mkdir(nested, { recursive: true });
+    await mkdir(join(directory, '.codex'));
+    await writeFile(join(nested, '.codex'), 'a file is not a directory');
+    assert.equal(findWorkspaceDirectory(nested), directory);
+    await mkdir(join(directory, 'tools', '.codex'));
+    assert.equal(findWorkspaceDirectory(nested), join(directory, 'tools'));
+    assert.throws(() => findWorkspaceDirectory(parse(directory).root), /찾지 못/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 async function callDiscord(client, name, args) {
   const result = await client.callTool({ name, arguments: args });
@@ -119,19 +134,25 @@ test('Windows CLI starts/resumes with stdin input and no Discord credentials',
       await writeFile(join(directory, 'codex.cmd'), `@echo off\r\n"${process.execPath}" "%~dp0fake.cjs" %*\r\n`);
       await writeFile(join(directory, 'fake.cjs'), `
         const assert = require('node:assert/strict');
+        assert.equal(process.cwd(), ${JSON.stringify(resolve(fileURLToPath(new URL('../../', import.meta.url))))});
         assert.equal(process.env.DISCORD_BOT_TOKEN, undefined);
         assert.ok(process.argv.includes('sandbox_mode=read-only'));
+        assert.ok(!process.argv.includes('-o'));
         let input = '';
         process.stdin.setEncoding('utf8');
         process.stdin.on('data', part => input += part);
         process.stdin.on('end', () => {
           const content = JSON.parse(input.slice(input.indexOf('\\n') + 1)).content;
-          if (content === 'second') {
+          if (content !== '한국어 & echo injected') {
             assert.ok(process.argv.includes('resume'));
             assert.ok(process.argv.includes('${id}'));
           } else assert.ok(!process.argv.includes('resume'));
           console.log(JSON.stringify({type:'thread.started',thread_id:'${id}'}));
-          require('node:fs').writeFileSync('reply.txt', content);
+          console.log('not JSON');
+          console.log(JSON.stringify({type:'item.completed',item:{type:'reasoning',text:'not the reply'}}));
+          console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'progress'}}));
+          console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:content === 'empty' ? ' ' : content}}));
+          if (content === 'fail') process.exitCode = 1;
         });
       `);
       process.env.PATH = `${directory};${previousPath}`;
@@ -140,6 +161,8 @@ test('Windows CLI starts/resumes with stdin input and no Discord credentials',
       assert.equal(await askCodex('한국어 & echo injected', session), '한국어 & echo injected');
       assert.equal(session.id, id);
       assert.equal(await askCodex('second', session), 'second');
+      await assert.rejects(askCodex('empty', session), /응답이 비어/);
+      await assert.rejects(askCodex('fail', session), /종료 코드 1/);
       await assert.rejects(askCodex('test', { id: '& echo injected' }), /세션 ID/);
     } finally {
       process.env.PATH = previousPath;

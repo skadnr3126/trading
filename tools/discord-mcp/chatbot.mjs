@@ -1,17 +1,27 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
+
+export function findWorkspaceDirectory(start = dirname(fileURLToPath(import.meta.url))) {
+  let directory = resolve(start);
+  while (!statSync(join(directory, '.codex'), { throwIfNoEntry: false })?.isDirectory()) {
+    const parent = dirname(directory);
+    if (parent === directory) throw new Error('상위 폴더에서 .codex 디렉터리를 찾지 못했습니다.');
+    directory = parent;
+  }
+  return directory;
+}
 
 export async function askCodex(message, session = {}, signal) {
   signal?.throwIfAborted();
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   if (session.id && !uuid.test(session.id)) throw new Error('잘못된 CLI 세션 ID');
-  const directory = await mkdtemp(join(tmpdir(), 'discord-chat-'));
+  const cwd = findWorkspaceDirectory();
   const args = ['exec', ...(session.id ? ['resume', session.id] : []),
     '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check', '--json',
-    '-c', 'sandbox_mode=read-only', '-c', 'web_search=disabled', '-o', 'reply.txt'];
+    '-c', 'sandbox_mode=read-only', '-c', 'web_search=disabled'];
   for (const feature of ['shell_tool', 'unified_exec', 'apps', 'plugins', 'multi_agent',
     'browser_use', 'computer_use', 'image_generation', 'code_mode_host', 'memories']) {
     args.push('--disable', feature);
@@ -19,51 +29,49 @@ export async function askCodex(message, session = {}, signal) {
   args.push('-');
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith('DISCORD_')) delete env[key];
-  try {
-    signal?.throwIfAborted();
-    await new Promise((resolveRun, reject) => {
-      // Only fixed CLI arguments reach cmd.exe. Chat text goes through stdin.
-      const child = process.platform === 'win32'
-        ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `codex.cmd ${args.join(' ')}`],
-          { cwd: directory, env, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
-        : spawn('codex', args, { cwd: directory, env, stdio: ['pipe', 'pipe', 'ignore'] });
-      const terminate = () => {
-        if (process.platform === 'win32') {
-          spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' });
-        } else child.kill('SIGKILL');
-      };
-      const abort = () => { terminate(); };
-      signal?.addEventListener('abort', abort, { once: true });
-      const lines = createInterface({ input: child.stdout });
-      lines.on('line', line => {
-        try {
-          const event = JSON.parse(line);
-          if (event.type === 'thread.started' && uuid.test(event.thread_id ?? '')) session.id = event.thread_id;
-        } catch { /* CLI diagnostics are not conversation output. */ }
-      });
-      const timer = setTimeout(() => {
-        terminate();
-        reject(new Error('AI 응답 시간 초과'));
-      }, 180_000);
-      child.once('error', () => { clearTimeout(timer); reject(new Error('Codex 실행 실패. CLI 설치를 확인하세요.')); });
-      child.once('close', code => {
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', abort);
-        lines.close();
-        if (signal?.aborted) reject(new Error('CLI 실행 취소'));
-        else code === 0 ? resolveRun() : reject(new Error(`Codex 종료 코드 ${code}. 로그인 및 사용 한도를 확인하세요.`));
-      });
-      child.stdin.on('error', () => {});
-      child.stdin.end('Discord 대화에 한국어로 답하세요. 도구나 파일을 사용하지 마세요.\n'
-        + JSON.stringify({ content: message }));
+  let reply = '';
+  signal?.throwIfAborted();
+  await new Promise((resolveRun, reject) => {
+    // Only fixed CLI arguments reach cmd.exe. Chat text goes through stdin.
+    const child = process.platform === 'win32'
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `codex.cmd ${args.join(' ')}`],
+        { cwd, env, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+      : spawn('codex', args, { cwd, env, stdio: ['pipe', 'pipe', 'ignore'] });
+    const terminate = () => {
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' });
+      } else child.kill('SIGKILL');
+    };
+    const abort = () => { terminate(); };
+    signal?.addEventListener('abort', abort, { once: true });
+    const lines = createInterface({ input: child.stdout });
+    lines.on('line', line => {
+      try {
+        const event = JSON.parse(line);
+        if (event.type === 'thread.started' && uuid.test(event.thread_id ?? '')) session.id = event.thread_id;
+        if (event.type === 'item.completed' && event.item?.type === 'agent_message'
+          && typeof event.item.text === 'string') reply = event.item.text.trim();
+      } catch { /* CLI diagnostics are not conversation output. */ }
     });
-    const reply = (await readFile(join(directory, 'reply.txt'), 'utf8')).trim();
-    if (!reply) throw new Error('AI 응답이 비어 있습니다.');
-    if (!session.id) throw new Error('CLI 세션 ID를 받지 못했습니다.');
-    return reply;
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+    const timer = setTimeout(() => {
+      terminate();
+      reject(new Error('AI 응답 시간 초과'));
+    }, 180_000);
+    child.once('error', () => { clearTimeout(timer); reject(new Error('Codex 실행 실패. CLI 설치를 확인하세요.')); });
+    child.once('close', code => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      lines.close();
+      if (signal?.aborted) reject(new Error('CLI 실행 취소'));
+      else code === 0 ? resolveRun() : reject(new Error(`Codex 종료 코드 ${code}. 로그인 및 사용 한도를 확인하세요.`));
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end('Discord 대화에 한국어로 답하세요. 도구나 파일을 사용하지 마세요.\n'
+      + JSON.stringify({ content: message }));
+  });
+  if (!reply) throw new Error('AI 응답이 비어 있습니다.');
+  if (!session.id) throw new Error('CLI 세션 ID를 받지 못했습니다.');
+  return reply;
 }
 
 export function createChatbot(discord, ask = askCodex, signal) {

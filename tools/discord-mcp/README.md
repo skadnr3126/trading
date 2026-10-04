@@ -21,6 +21,38 @@ Codex의 MCP 설정에서 실행 명령을 `node`, 인수를 `D:/trading/tools/d
 
 기존에 따로 실행한 `chatbot.mjs`는 종료한 뒤 서버를 재시작하세요. 서버는 한 번에 하나만 실행합니다. 로그는 stderr에만 출력하고 stdout은 MCP 통신에 사용합니다.
 
+## 백그라운드 서비스 (Linux/Unix)
+
+계속 켜둘 봇은 Supervisor 서비스로 실행합니다. Node.js 24.5 이상(환경 프록시 플래그 지원), Python 3와 pip, 로그인된 Codex CLI가 필요합니다. 위의 `.env` 또는 주입된 환경변수로 Discord 토큰·채널 ID를 준비하세요. 토큰과 Codex 인증 파일은 Git에 넣지 않습니다.
+
+```bash
+cd tools/discord-mcp
+npm ci
+npm run service:install
+npm run service:start
+npm run service:status
+npm run service:logs
+```
+
+`service:start`는 독립적인 Supervisor 데몬을 시작하고 종료됩니다. 데몬은 MCP 클라이언트인 `service/runtime.mjs`를 관리하며, 이 클라이언트가 `server.mjs`의 stdin/MCP 연결을 유지합니다. 터미널이나 Codex 대화 창이 닫혀도 실행을 유지하며, 서버·클라이언트가 종료되면 다시 시작합니다. `service:start`를 여러 번 실행해도 같은 서비스를 재사용합니다. 기존에 직접 띄운 서버는 먼저 종료해 중복 답장을 방지하세요.
+
+```bash
+npm run service:restart   # 봇 재시작
+npm run service:stop      # 봇을 의도적으로 중지
+npm run service:start     # 중지한 봇 다시 시작
+npm run service:shutdown  # 관리 데몬까지 중지
+```
+
+기본 상태 디렉터리는 Git에서 제외된 `.service/`입니다. Supervisor 패키지, Unix 제어 소켓, PID, 생성된 설정과 회전 로그가 들어갑니다. `DISCORD_SERVICE_STATE_DIR`로 별도의 쓰기 가능한 위치를 지정할 수 있습니다. 설치와 모든 관리 명령에서 같은 위치를 사용하세요. 서비스 설정에는 경로만 저장하며, 토큰은 프로세스 환경으로 전달합니다. 환경변수를 바꿨다면 `service:shutdown` 후 새로운 환경에서 `service:start`를 실행해야 데몬도 새 값을 받습니다.
+
+`service:status`의 RUNNING 표시와 함께 `.service/logs/bot.log`에서 현재 서버의 `MCP initialized` 및 `Discord Gateway READY: bot online`을 확인하세요. MCP 초기화만으로는 Discord 로그인 성공을 보장하지 않습니다. 클라이언트는 30초마다 MCP ping을 확인하고, 10초간 응답이 없거나 초기 Gateway READY가 60초간 없으면 종료해 재시작을 요청합니다. 연결된 Discord Gateway의 재접속은 discord.js가 처리합니다.
+
+종료·신호·재시작 기록은 `.service/logs/supervisor.log`, 운영 상태는 `bot.log`에 남습니다. 각각 5MB에서 회전하고 백업 3개를 유지합니다. 로그에는 메시지 내용이나 인증 값을 기록하지 않습니다. 서버 재시작 시 기존 구현대로 메모리 수신함과 대화 세션은 새로 시작합니다.
+
+프록시 환경에서는 `--use-env-proxy`와 `service/proxy.cjs`가 REST와 Gateway WebSocket에 환경 프록시를 적용합니다. TLS 검증은 유지합니다. `CODEX_SQLITE_HOME`은 별도 지정이 없으면 `.service/codex-state`를 사용하고, Codex 로그인 저장소는 그대로 사용합니다. 클라우드에서 인증/세션 저장 경로에 쓰기 권한이 없다면 플랫폼의 지원되는 권한 흐름이 필요합니다.
+
+이 서비스는 **호스트가 살아 있는 동안** 프로세스를 유지합니다. 머신 전체가 종료·교체되면 봇도 멈춥니다. 머신 부팅 자동 실행이 필요하면 해당 호스트의 서비스 관리자나 배포 시작 절차에 `npm run service:start`를 등록하세요. 상시 가동을 보장하지 않는 임시 클라우드 머신만으로 24시간 가용성을 보장하지는 않습니다.
+
 ## 코드 읽는 순서
 
 1. `gateway.mjs`: Discord의 `messageCreate` 이벤트에서 메시지 ID와 내용을 받습니다.
@@ -42,4 +74,4 @@ MCP 도구는 수신, 전송, 입력 중 표시 세 개입니다. 과거 메시�
 npm.cmd test
 ```
 
-자동 검사는 가짜 Discord/CLI 응답과 실제 MCP 프로토콜을 사용합니다. 실제 AI 답변의 품질을 검증하거나 Discord에 테스트 메시지를 보내지는 않습니다.
+자동 검사는 가짜 Discord/CLI 응답과 실제 MCP 프로토콜을 사용합니다. 서비스 검사에서는 실제 자식 프로세스의 종료, MCP ping 무응답, READY 시간 초과, 정상 종료 및 로그의 민감값 제외를 검증합니다. 실제 AI 답변의 품질을 검증하거나 Discord에 테스트 메시지를 보내지는 않습니다.

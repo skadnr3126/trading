@@ -1,3 +1,4 @@
 .memo/
 tools/discord-mcp/node_modules/
 tools/discord-mcp/.env
+tools/discord-mcp/.service/

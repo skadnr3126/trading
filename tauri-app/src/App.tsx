@@ -1,11 +1,18 @@
 import { useState } from "react";
-import { type Exchange, type Asset, useQuery, exchangeName } from "./api";
+import { type Asset, useQuery } from "./api";
+import {
+  type Exchange,
+  exchanges,
+  exchangeIds,
+  defaultExchange,
+  exchangeName,
+} from "./exchanges";
 import { Chart } from "./features/Chart";
 import { Transfers } from "./features/Transfers";
 import "./App.css";
 
 export default function App() {
-  const [exchange, setExchange] = useState<Exchange>("bithumb");
+  const [exchange, setExchange] = useState<Exchange>(defaultExchange);
   const [tab, setTab] = useState("overview");
   const [locked, setLocked] = useState(false);
   const [transferCurrency, setTransferCurrency] = useState("BTC");
@@ -49,7 +56,9 @@ export default function App() {
         <div className="sidebar-bottom">
           <span className="live-dot" /> LOCAL WORKSPACE
           <p>API 키는 이 기기에 보관됩니다.</p>
-          <small>빗썸 · Binance Spot</small>
+          <small>
+            {exchangeIds.map((id) => exchanges[id].workspaceLabel).join(" · ")}
+          </small>
         </div>
       </aside>
       <div className="workspace">
@@ -63,7 +72,7 @@ export default function App() {
                 : "입출금"}
           </div>
           <div className="exchange-switch">
-            {(["bithumb", "binance"] as Exchange[]).map((e) => (
+            {exchangeIds.map((e) => (
               <button
                 disabled={locked}
                 className={exchange === e ? "selected" : ""}
@@ -71,7 +80,7 @@ export default function App() {
                 onClick={() => setExchange(e)}
               >
                 <span className={`exchange-logo ${e}`}>
-                  {e === "bithumb" ? "b" : "◆"}
+                  {exchanges[e].logo}
                 </span>
                 {exchangeName(e)}
               </button>
@@ -82,8 +91,7 @@ export default function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                {exchange === "bithumb" ? "BITHUMB" : "BINANCE"} / PERSONAL
-                WALLET
+                {exchanges[exchange].code} / {exchanges[exchange].walletLabel}
               </div>
               <h1>
                 {tab === "overview"
@@ -134,7 +142,13 @@ export default function App() {
           </div>
         </main>
         <footer>
-          FOLIO TERMINAL <span>거래소별 독립 연결 · KRW / USDT</span>
+          FOLIO TERMINAL{" "}
+          <span>
+            거래소별 독립 연결 ·{" "}
+            {Array.from(
+              new Set(exchangeIds.map((id) => exchanges[id].quoteCurrency)),
+            ).join(" / ")}
+          </span>
         </footer>
       </div>
     </div>
@@ -165,9 +179,7 @@ function Assets({
           <h2>
             {exchangeName(exchange)} <span>↗</span>
           </h2>
-          <p>
-            {exchange === "bithumb" ? "빗썸 거래 계정" : "바이낸스 현물 지갑"}
-          </p>
+          <p>{exchanges[exchange].accountDescription}</p>
           <button className="text-button" onClick={() => onTransfer()}>
             입출금 바로가기 →
           </button>
@@ -265,8 +277,8 @@ function Assets({
         )}
       </section>
       <div className="footnote">
-        ⓘ 자산 평가는 서로 다른 기준 통화를 합산하지 않습니다. 빗썸과 바이낸스의
-        잔고는 각각 조회됩니다.
+        ⓘ 자산 평가는 서로 다른 기준 통화를 합산하지 않습니다. 거래소별 잔고는
+        각각 조회됩니다.
       </div>
     </>
   );

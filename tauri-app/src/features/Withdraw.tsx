@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  type Exchange,
   type Network,
   type Details,
   type Withdrawal,
@@ -11,8 +10,8 @@ import {
   api,
   failure,
   useQuery,
-  exchangeName,
 } from "../api";
+import { type Exchange, exchangeName } from "../exchanges";
 export function Withdraw({
   exchange,
   currency,
@@ -51,14 +50,25 @@ export function Withdraw({
     setReview(undefined);
     setConfirmed(false);
   }
-  const request = (): Withdrawal => ({
-    currency,
-    network: network.id,
-    address,
-    amount,
-    tag: tag || null,
-    target: exchange === "binance" ? { exchange } : { exchange, details },
-  });
+  const request = (): Withdrawal => {
+    const common = {
+      currency,
+      network: network.id,
+      address,
+      amount,
+      tag: tag || null,
+    };
+    switch (exchange) {
+      case "bithumb":
+        return { ...common, target: { exchange, details } };
+      case "binance":
+        return { ...common, target: { exchange } };
+      default: {
+        const unsupported: never = exchange;
+        throw new Error(`지원하지 않는 출금 거래소: ${unsupported}`);
+      }
+    }
+  };
   async function inspect() {
     setBusy(true);
     onBusy(true);

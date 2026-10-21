@@ -1,8 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-export type Exchange = "bithumb" | "binance";
-export const exchangeName = (e: Exchange) =>
-  e === "bithumb" ? "빗썸" : "바이낸스";
 export interface Asset {
   currency: string;
   available: string;

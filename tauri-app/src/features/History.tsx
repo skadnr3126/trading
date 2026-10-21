@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { type Exchange, type HistoryEntry, useQuery } from "../api";
+import { type HistoryEntry, useQuery } from "../api";
+import { type Exchange, exchanges } from "../exchanges";
 export function History({
   exchange,
   currency,
@@ -58,9 +59,7 @@ function HistoryPage({
         <div>
           <h3>{currency} 입출금 내역</h3>
           <p>
-            {exchange === "binance"
-              ? "최근 89일 · 페이지당 50건"
-              : "최신순 · 페이지당 50건"}
+            {exchanges[exchange].historyDescription}
           </p>
         </div>
         <div className="button-row">

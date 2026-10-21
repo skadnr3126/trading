@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  type Exchange,
   type Market,
   type Network,
   type DepositAddress,
@@ -8,6 +7,7 @@ import {
   failure,
   useQuery,
 } from "../api";
+import { type Exchange, exchanges } from "../exchanges";
 import { Withdraw } from "./Withdraw";
 import { History } from "./History";
 
@@ -248,7 +248,7 @@ function Deposit({
           >
             {busy ? "처리 중…" : "입금 주소 조회"}
           </button>
-          {exchange === "bithumb" && (
+          {exchanges[exchange].canGenerateDepositAddress && (
             <button
               disabled={busy || !network.deposit}
               onClick={() => void read(true)}

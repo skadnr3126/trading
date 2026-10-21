@@ -1,16 +1,16 @@
 import { useState } from "react";
 import {
-  type Exchange,
   type Market,
   type Candle,
   useQuery,
   format,
 } from "../api";
+import { type Exchange, exchanges } from "../exchanges";
 
 export function Chart({ exchange }: { exchange: Exchange }) {
   const markets = useQuery<Market[]>("markets", { exchange });
   const [selected, setSelected] = useState(
-    exchange === "bithumb" ? "KRW-BTC" : "BTCUSDT",
+    exchanges[exchange].defaultMarket,
   );
   const [interval, setInterval] = useState("1h");
   const [search, setSearch] = useState("");

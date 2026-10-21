@@ -1,0 +1,46 @@
+use super::*;
+impl Binance {
+    pub(super) async fn public(&self, path: &str, p: Vec<(String, String)>) -> Result<Value> {
+        send(
+            self.http
+                .get(format!("https://api.binance.com{path}"))
+                .query(&p),
+            false,
+        )
+        .await
+    }
+
+    pub(super) async fn signed(
+        &self,
+        method: Method,
+        path: &str,
+        mut p: Vec<(String, String)>,
+    ) -> Result<Value> {
+        if !self.ready() {
+            return Err(AppError::new(
+                "configuration",
+                "BINANCE_KEY / BINANCE_SECRET 설정을 확인하세요.",
+            ));
+        }
+        let time = self.public("/api/v3/time", vec![]).await?;
+        let timestamp = time["serverTime"].as_u64().ok_or_else(AppError::schema)?;
+        p.push(("timestamp".into(), timestamp.to_string()));
+        p.push(("recvWindow".into(), "10000".into()));
+        let q = query(&p);
+        let mut mac = Hmac::<Sha256>::new_from_slice(self.credentials.secret.as_bytes())
+            .map_err(|_| AppError::schema())?;
+        mac.update(q.as_bytes());
+        let signature = hex::encode(mac.finalize().into_bytes());
+        let mutation = method == Method::POST;
+        send(
+            self.http
+                .request(
+                    method,
+                    format!("https://api.binance.com{path}?{q}&signature={signature}"),
+                )
+                .header("X-MBX-APIKEY", &self.credentials.key),
+            mutation,
+        )
+        .await
+    }
+}

@@ -87,30 +87,31 @@ impl Bithumb {
         kind: HistoryKind,
         page: u32,
     ) -> Result<Vec<HistoryEntry>> {
-        let path = match kind {
-            HistoryKind::Deposit => "/v1/deposits",
-            HistoryKind::Withdraw => "/v1/withdraws",
+        let path = match (currency, kind) {
+            ("KRW", kind) => super::krw::krw_path(kind),
+            (_, HistoryKind::Deposit) => "/v1/deposits",
+            (_, HistoryKind::Withdraw) => "/v1/withdraws",
         };
-        let v = self
-            .request(
-                Method::GET,
-                path,
-                params(&[
-                    ("currency", currency),
-                    ("page", &page.to_string()),
-                    ("limit", "50"),
-                    ("order_by", "desc"),
-                ]),
-                true,
-            )
-            .await?;
+        let mut p = params(&[
+            ("page", &page.to_string()),
+            ("limit", "50"),
+            ("order_by", "desc"),
+        ]);
+        if currency != "KRW" {
+            p.push(("currency".into(), currency.into()));
+        }
+        let v = self.request(Method::GET, path, p, true).await?;
         rows(&v)?
             .iter()
             .map(|r| {
                 Ok(HistoryEntry {
                     id: string(r, "uuid"),
                     currency: string(r, "currency"),
-                    network: string(r, "net_type"),
+                    network: if currency == "KRW" {
+                        "연결 은행 계좌".into()
+                    } else {
+                        string(r, "net_type")
+                    },
                     amount: string(r, "amount"),
                     fee: optional(r, "fee"),
                     state: string(r, "state"),

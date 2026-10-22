@@ -5,8 +5,12 @@ use crate::{
 };
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-#[derive(Default)]
-pub struct Tickets(Mutex<HashMap<String, (u64, Withdrawal)>>);
+pub struct Tickets<T = Withdrawal>(Mutex<HashMap<String, (u64, T)>>);
+impl<T> Default for Tickets<T> {
+    fn default() -> Self {
+        Self(Mutex::new(HashMap::new()))
+    }
+}
 impl Tickets {
     pub async fn issue(
         &self,
@@ -15,12 +19,7 @@ impl Tickets {
         minimum: String,
         note: String,
     ) -> WithdrawalReview {
-        let mut tickets = self.0.lock().await;
-        let now = now();
-        tickets.retain(|_, (expiry, _)| *expiry > now);
-        let ticket = uuid::Uuid::new_v4().to_string();
-        let expires_at = now + 60_000;
-        tickets.insert(ticket.clone(), (expires_at, request.clone()));
+        let (ticket, expires_at) = self.store(request.clone()).await;
         WithdrawalReview {
             ticket,
             request,
@@ -30,7 +29,18 @@ impl Tickets {
             note,
         }
     }
-    pub async fn consume(&self, ticket: &str) -> Result<Withdrawal> {
+}
+impl<T> Tickets<T> {
+    pub async fn store(&self, request: T) -> (String, u64) {
+        let mut tickets = self.0.lock().await;
+        let now = now();
+        tickets.retain(|_, (expiry, _)| *expiry > now);
+        let ticket = uuid::Uuid::new_v4().to_string();
+        let expires_at = now + 60_000;
+        tickets.insert(ticket.clone(), (expires_at, request));
+        (ticket, expires_at)
+    }
+    pub async fn consume(&self, ticket: &str) -> Result<T> {
         let (expiry, request) = self.0.lock().await.remove(ticket).ok_or_else(|| {
             AppError::invalid("검토가 없거나 이미 사용되었습니다. 다시 검토하세요.")
         })?;
@@ -73,7 +83,12 @@ mod tests {
         let r = tickets
             .issue(request(), "0".into(), "0".into(), "".into())
             .await;
-        assert!(Tickets::default().consume(&r.ticket).await.is_err());
+        assert!(
+            Tickets::<Withdrawal>::default()
+                .consume(&r.ticket)
+                .await
+                .is_err()
+        );
     }
     #[test]
     fn ipc_rejects_unknown_fields_and_wrong_details() {

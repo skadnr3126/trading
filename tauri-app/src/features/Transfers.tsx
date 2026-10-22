@@ -7,9 +7,9 @@ import {
   failure,
   useQuery,
 } from "../api";
-import { type Exchange, exchanges } from "../exchanges";
-import { Withdraw } from "./Withdraw";
+import { type Exchange } from "../exchanges";
 import { History } from "./History";
+import { transferDefinitions } from "./transfers/registry";
 
 export function Transfers({
   exchange,
@@ -32,23 +32,26 @@ export function Transfers({
     nonce: number;
   } | null>(null);
   const markets = useQuery<Market[]>("markets", { exchange });
+  const definition = transferDefinitions[exchange];
   const currencies = [
     ...new Set([
       "BTC",
       "ETH",
       "XRP",
       "USDT",
+      ...(definition.bank ? [definition.bank.currency] : []),
       ...(markets.data ?? []).map((m) => m.base),
     ]),
   ]
-    .filter((c) => c !== "KRW")
+    .filter((c) => !definition.excludedCurrencies.includes(c))
     .sort();
   const normalizedCurrency = currencyInput.trim().toUpperCase();
   const currency = currencies.includes(normalizedCurrency) ? normalizedCurrency : "";
+  const bank = definition.bank?.currency === currency ? definition.bank : undefined;
   const networks = useQuery<Network[]>(
     "networks",
     { exchange, currency },
-    currency !== "",
+    currency !== "" && !bank,
   );
   const selected = currency
     ? networks.data?.find((n) => n.id === network)
@@ -65,8 +68,8 @@ export function Transfers({
       <section className="panel transfer-panel">
         <div className="panel-heading">
           <div>
-            <h3>가상자산 입출금</h3>
-            <p>주소와 네트워크가 일치하는지 확인하세요.</p>
+            <h3>{bank ? bank.title : "가상자산 입출금"}</h3>
+            <p>{bank ? bank.description : "주소와 네트워크가 일치하는지 확인하세요."}</p>
           </div>
           <div className="segmented">
             <button
@@ -115,7 +118,7 @@ export function Transfers({
                 ))}
               </datalist>
             </label>
-            <label>
+            {!bank && <label>
               네트워크
               <select
                 value={selected?.id ?? ""}
@@ -131,7 +134,7 @@ export function Transfers({
                   </option>
                 ))}
               </select>
-            </label>
+            </label>}
           </div>
           {!currency && (
             <p className="muted">목록에서 자산을 선택하거나 심볼을 끝까지 입력하세요.</p>
@@ -148,7 +151,10 @@ export function Transfers({
           {!networks.loading && networks.data?.length === 0 && (
             <div className="notice">이 자산의 입출금 네트워크가 없습니다.</div>
           )}
-          {selected && (
+          {bank && <bank.Form key={`${currency}:${mode}`}
+            kind={mode === "withdraw" ? "withdraw" : "deposit"}
+            onBusy={setWorking} onHistory={showHistory} />}
+          {!bank && selected && (
             <div key={`${currency}:${selected.id}:${mode}`}>
               {mode === "deposit" ? (
                 <Deposit
@@ -158,8 +164,7 @@ export function Transfers({
                   onBusy={setWorking}
                 />
               ) : (
-                <Withdraw
-                  exchange={exchange}
+                <definition.Withdraw
                   currency={currency}
                   network={selected}
                   onBusy={setWorking}
@@ -178,8 +183,8 @@ export function Transfers({
         busy={busy}
       />
       <p className="footnote">
-        가상자산 입금은 외부 지갑에서 아래 주소로 전송해 진행합니다. 원화 은행
-        입출금은 거래소 앱을 이용하세요.
+        {bank ? bank.footnote
+          : "가상자산 입금은 외부 지갑에서 조회한 주소로 전송해 진행합니다."}
       </p>
     </>
   );
@@ -269,7 +274,7 @@ function Deposit({
           >
             {busy ? "처리 중…" : "입금 주소 조회"}
           </button>
-          {exchanges[exchange].canGenerateDepositAddress && (
+          {transferDefinitions[exchange].canGenerateDepositAddress && (
             <button
               disabled={busy || !network.deposit}
               onClick={() => void read(true)}

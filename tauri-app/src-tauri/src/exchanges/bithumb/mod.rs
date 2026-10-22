@@ -1,5 +1,6 @@
 mod auth;
 mod contracts;
+mod krw;
 mod market;
 mod wallet;
 mod withdrawals;
@@ -12,6 +13,7 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 pub use contracts::WithdrawalDetails;
+pub use contracts::{KrwExecution, KrwRequest, KrwReview};
 use hmac::{Hmac, Mac};
 use reqwest::Method;
 use rust_decimal::Decimal;
@@ -22,6 +24,7 @@ pub struct Bithumb {
     http: reqwest::Client,
     credentials: Credentials,
     tickets: Tickets,
+    krw_tickets: Tickets<KrwRequest>,
 }
 
 impl Bithumb {
@@ -30,6 +33,7 @@ impl Bithumb {
             http,
             credentials: config::load("BITHUMB"),
             tickets: Tickets::default(),
+            krw_tickets: Tickets::default(),
         }
     }
 

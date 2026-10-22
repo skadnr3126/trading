@@ -4,9 +4,24 @@ use crate::{
     exchanges::{
         Exchanges,
         binance::{FuturesAccount, FuturesAsset},
+        bithumb::{KrwExecution, KrwRequest, KrwReview},
     },
 };
 use tauri::State;
+#[tauri::command]
+pub async fn review_bithumb_krw(
+    state: State<'_, Exchanges>,
+    request: KrwRequest,
+) -> Result<KrwReview> {
+    state.bithumb.review_krw(request).await
+}
+#[tauri::command]
+pub async fn execute_bithumb_krw(
+    state: State<'_, Exchanges>,
+    ticket: String,
+) -> Result<KrwExecution> {
+    state.bithumb.execute_krw(&ticket).await
+}
 #[tauri::command]
 pub fn connection_status(state: State<'_, Exchanges>) -> Vec<Connection> {
     [Exchange::Bithumb, Exchange::Binance]

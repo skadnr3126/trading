@@ -11,6 +11,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(exchanges::Exchanges::new())
         .invoke_handler(tauri::generate_handler![
+            commands::review_bithumb_krw,
+            commands::execute_bithumb_krw,
             commands::connection_status,
             commands::assets,
             commands::binance_futures_assets,

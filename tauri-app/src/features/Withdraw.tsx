@@ -1,111 +1,51 @@
-import { useEffect, useState } from "react";
+import { useState, type ReactNode } from "react";
+import { useReviewedOperation } from "./transfers/useReviewedOperation";
 import {
   type Network,
-  type Details,
   type Withdrawal,
+  type Target,
   type Review,
   type Execution,
   type AllowedAddress,
-  type Failure,
   api,
-  failure,
   useQuery,
 } from "../api";
-import { type Exchange, exchangeName } from "../exchanges";
-export function Withdraw({
-  exchange,
-  currency,
-  network,
-  onBusy,
-  onHistory,
-}: {
-  exchange: Exchange;
+import { exchangeName } from "../exchanges";
+export interface CoinWithdrawalProps {
   currency: string;
   network: Network;
   onBusy: (v: boolean) => void;
   onHistory: (currency: string, kind: "withdraw") => void;
+}
+
+export function Withdraw({
+  target,
+  onChooseAddress,
+  renderDetails,
+  currency,
+  network,
+  onBusy,
+  onHistory,
+}: CoinWithdrawalProps & {
+  target: Target;
+  onChooseAddress?: (address: AllowedAddress) => void;
+  renderDetails?: (invalidate: () => void) => ReactNode;
 }) {
+  const exchange = target.exchange;
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [tag, setTag] = useState("");
-  const [details, setDetails] = useState<Details>({
-    type: "whitelist",
-    exchange: "",
+  const allowed = useQuery<AllowedAddress[]>("withdraw_addresses", { exchange });
+  const flow = useReviewedOperation<Withdrawal, Review, Execution>({
+    inspect: (request) => api<Review>("review_withdrawal", { request }),
+    execute: (review) => api<Execution>("execute_withdrawal", {
+      exchange: review.request.target.exchange, ticket: review.ticket,
+    }),
+    onBusy,
+    onSettled: (request) => onHistory(request.currency, "withdraw"),
   });
-  const [review, setReview] = useState<Review>();
-  const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Execution>();
-  const [error, setError] = useState<Failure>();
-  const [attempt, setAttempt] = useState<Withdrawal>();
-  const [clock, setClock] = useState(Date.now());
-  const allowed = useQuery<AllowedAddress[]>("withdraw_addresses", {
-    exchange,
-  });
-  useEffect(() => {
-    const t = setInterval(() => setClock(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  function invalidate() {
-    setReview(undefined);
-    setConfirmed(false);
-  }
-  const request = (): Withdrawal => {
-    const common = {
-      currency,
-      network: network.id,
-      address,
-      amount,
-      tag: tag || null,
-    };
-    switch (exchange) {
-      case "bithumb":
-        return { ...common, target: { exchange, details } };
-      case "binance":
-        return { ...common, target: { exchange } };
-      default: {
-        const unsupported: never = exchange;
-        throw new Error(`지원하지 않는 출금 거래소: ${unsupported}`);
-      }
-    }
-  };
-  async function inspect() {
-    setBusy(true);
-    onBusy(true);
-    setError(undefined);
-    invalidate();
-    try {
-      setReview(await api<Review>("review_withdrawal", { request: request() }));
-    } catch (e) {
-      setError(failure(e));
-    } finally {
-      setBusy(false);
-      onBusy(false);
-    }
-  }
-  async function execute() {
-    if (!review || !confirmed || review.expiresAt <= Date.now() || busy) return;
-    const snapshot = review;
-    invalidate();
-    setAttempt(snapshot.request);
-    setBusy(true);
-    onBusy(true);
-    setError(undefined);
-    try {
-      const response = await api<Execution>("execute_withdrawal", {
-        exchange,
-        ticket: snapshot.ticket,
-      });
-      setResult(response);
-    } catch (e) {
-      setError(failure(e, true));
-    } finally {
-      setBusy(false);
-      onBusy(false);
-      onHistory(snapshot.request.currency, "withdraw");
-    }
-  }
-  const locked = busy || !!result || error?.kind === "uncertain";
+  const { review, confirmed, busy, result, error, attempt, clock, locked, invalidate, setConfirmed } = flow;
+  const inspect = () => flow.inspect({ currency, network: network.id, address, amount, tag: tag || null, target });
   function choose(index: string) {
     if (index === "") return;
     const a = allowed.data?.[Number(index)];
@@ -113,16 +53,11 @@ export function Withdraw({
     invalidate();
     setAddress(a.address);
     setTag(a.tag ?? "");
-    if (exchange === "bithumb" && a.target?.exchange === "bithumb")
-      setDetails(a.target.details);
+    onChooseAddress?.(a);
   }
   const matching = allowed.data
     ?.map((a, index) => ({ ...a, index }))
     .filter((a) => a.currency === currency && a.network === network.id);
-  const field = (key: keyof Details, value: string) => {
-    invalidate();
-    setDetails((d) => ({ ...d, [key]: value }));
-  };
   return (
     <div>
       <div className="network-note">
@@ -185,75 +120,7 @@ export function Withdraw({
             />
           </label>
         </div>
-        {exchange === "bithumb" && (
-          <div className="bithumb-details">
-            <div className="eyebrow">BITHUMB RECIPIENT</div>
-            <label>
-              수취인 유형
-              <select
-                value={details.type}
-                onChange={(e) => {
-                  invalidate();
-                  setDetails({ type: e.target.value as Details["type"] });
-                }}
-              >
-                <option value="whitelist">
-                  화이트리스트 / CODE ID Connect
-                </option>
-                <option value="personal">CODE 개인</option>
-                <option value="corporation">CODE 법인</option>
-                <option value="internal">빗썸 내부 출금</option>
-              </select>
-            </label>
-            {details.type !== "internal" && (
-              <label>
-                받는 거래소 영문명
-                <input
-                  value={details.exchange ?? ""}
-                  onChange={(e) => field("exchange", e.target.value)}
-                  placeholder="예: Binance (등록 정보와 동일하게 입력)"
-                />
-              </label>
-            )}
-            {(details.type === "personal" ||
-              details.type === "corporation") && (
-              <div className="form-grid">
-                <label>
-                  수취인 / 대표자 국문명
-                  <input
-                    value={details.korean ?? ""}
-                    onChange={(e) => field("korean", e.target.value)}
-                  />
-                </label>
-                <label>
-                  수취인 / 대표자 영문명
-                  <input
-                    value={details.english ?? ""}
-                    onChange={(e) => field("english", e.target.value)}
-                  />
-                </label>
-              </div>
-            )}
-            {details.type === "corporation" && (
-              <div className="form-grid">
-                <label>
-                  법인 국문명
-                  <input
-                    value={details.corpKorean ?? ""}
-                    onChange={(e) => field("corpKorean", e.target.value)}
-                  />
-                </label>
-                <label>
-                  법인 영문명
-                  <input
-                    value={details.corpEnglish ?? ""}
-                    onChange={(e) => field("corpEnglish", e.target.value)}
-                  />
-                </label>
-              </div>
-            )}
-          </div>
-        )}
+        {renderDetails?.(invalidate)}
       </fieldset>
       {!result && error?.kind !== "uncertain" && (
         <button
@@ -305,7 +172,7 @@ export function Withdraw({
           <button
             className="primary full"
             disabled={!confirmed || busy || review.expiresAt <= clock}
-            onClick={() => void execute()}
+            onClick={() => void flow.execute()}
           >
             실제 출금 요청
           </button>
@@ -356,9 +223,8 @@ export function Withdraw({
             </button>
             <button
               onClick={() => {
-                setResult(undefined);
+                flow.reset();
                 setAmount("");
-                setAttempt(undefined);
               }}
             >
               새 출금 작성

@@ -8,7 +8,6 @@ interface ExchangeDefinition {
   accountDescription: string;
   defaultMarket: string;
   quoteCurrency: string;
-  canGenerateDepositAddress: boolean;
   historyDescription: string;
 }
 
@@ -22,7 +21,6 @@ export const exchanges = {
     accountDescription: "빗썸 거래 계정",
     defaultMarket: "KRW-BTC",
     quoteCurrency: "KRW",
-    canGenerateDepositAddress: true,
     historyDescription: "최신순 · 페이지당 50건",
   },
   binance: {
@@ -34,7 +32,6 @@ export const exchanges = {
     accountDescription: "바이낸스 현물 지갑",
     defaultMarket: "BTCUSDT",
     quoteCurrency: "USDT",
-    canGenerateDepositAddress: false,
     historyDescription: "최근 89일 · 페이지당 50건",
   },
 } satisfies Record<string, ExchangeDefinition>;

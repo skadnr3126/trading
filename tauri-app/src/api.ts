@@ -1,3 +1,4 @@
+import type { BithumbWithdrawalDetails } from "./features/bithumb/withdrawal_contracts";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 export interface Asset {
@@ -33,16 +34,9 @@ export interface DepositAddress {
   tag: string | null;
   message: string;
 }
-export interface Details {
-  type: "internal" | "whitelist" | "personal" | "corporation";
-  exchange?: string;
-  korean?: string;
-  english?: string;
-  corpKorean?: string;
-  corpEnglish?: string;
-}
+
 export type Target =
-  { exchange: "binance" } | { exchange: "bithumb"; details: Details };
+  { exchange: "binance" } | { exchange: "bithumb"; details: BithumbWithdrawalDetails };
 export interface Withdrawal {
   currency: string;
   network: string;

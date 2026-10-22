@@ -1057,3 +1057,8 @@ footer span {
   gap: 24px;
   min-width: 0;
 }
+
+.asset-account-tabs {
+  justify-self: start;
+  flex-wrap: wrap;
+}

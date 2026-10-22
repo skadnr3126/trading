@@ -1,15 +1,52 @@
-import { useState } from "react";
 import { type Asset, useQuery } from "../api";
 import { exchanges, exchangeName } from "../exchanges";
 import { type AssetActions } from "./contracts";
 import { type FuturesAccount, type FuturesAsset } from "./binance_contracts";
+import { type AssetFilterControls, type BinanceAssetAccount, type BinanceAssetViewState } from "./view_state";
 
-export function BinanceAsset({ onChart, onTransfer }: AssetActions) {
+const accounts: { id: BinanceAssetAccount; label: string }[] = [
+  { id: "spot", label: "Spot 자산" },
+  { id: "usdtM", label: "USDT-M 자산" },
+  { id: "coinM", label: "COIN-M 자산" },
+];
+
+export function BinanceAsset({ onChart, onTransfer, viewState, onViewStateChange }: AssetActions & {
+  viewState: BinanceAssetViewState;
+  onViewStateChange: (state: BinanceAssetViewState) => void;
+}) {
+  const { account } = viewState;
+  const filterControls: AssetFilterControls = {
+    filters: viewState.filters[account],
+    onFiltersChange: (filters) => onViewStateChange({
+      ...viewState,
+      filters: { ...viewState.filters, [account]: filters },
+    }),
+  };
   return (
     <div className="binance-assets">
-      <SpotAssets onChart={onChart} onTransfer={onTransfer} />
-      <FuturesAssets account="usdtM" title="USDT-M Futures" />
-      <FuturesAssets account="coinM" title="COIN-M Futures" />
+      <div className="segmented asset-account-tabs" role="group" aria-label="자산 계정 선택">
+        {accounts.map(({ id, label }) => (
+          <button
+            key={id}
+            className={account === id ? "selected" : ""}
+            aria-pressed={account === id}
+            onClick={() => onViewStateChange({ ...viewState, account: id })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+       
+      {account === "spot" ? (
+        <SpotAssets onChart={onChart} onTransfer={onTransfer} {...filterControls} />
+      ) : (
+        <FuturesAssets
+          key={account}
+          account={account}
+          title={account === "usdtM" ? "USDT-M Futures" : "COIN-M Futures"}
+          {...filterControls}
+        />
+      )}
       <p className="footnote">
         계정별 잔고는 각 자산 단위로 표시하며 합산하지 않습니다.
         선물 계정의 자산을 외부로 출금하려면 먼저 Spot으로 이체하세요.
@@ -18,11 +55,10 @@ export function BinanceAsset({ onChart, onTransfer }: AssetActions) {
   );
 }
 
-function SpotAssets({ onChart, onTransfer }: AssetActions) {
+function SpotAssets({ onChart, onTransfer, filters, onFiltersChange }: AssetActions & AssetFilterControls) {
   const exchange = "binance";
   const q = useQuery<Asset[]>("assets", { exchange });
-  const [search, setSearch] = useState("");
-  const [hideZero, setHideZero] = useState(true);
+  const { search, hideZero } = filters;
   const visible = (q.data ?? []).filter(
     (a) =>
       a.currency.includes(search.toUpperCase()) &&
@@ -30,39 +66,6 @@ function SpotAssets({ onChart, onTransfer }: AssetActions) {
   );
   return (
     <>
-      <div className="summary-grid">
-        <section className="summary-card accent">
-          <div className="eyebrow">CONNECTED EXCHANGE</div>
-          <h2>
-            {exchangeName(exchange)} <span>↗</span>
-          </h2>
-          <p>{exchanges[exchange].accountDescription}</p>
-          <button className="text-button" onClick={() => onTransfer()}>
-            입출금 바로가기 →
-          </button>
-        </section>
-        <section className="summary-card">
-          <div className="eyebrow">ASSETS HELD</div>
-          <h2>
-            {q.data
-              ? q.data.filter((a) => Number(a.available) + Number(a.locked) > 0)
-                  .length
-              : "—"}{" "}
-            <small>종</small>
-          </h2>
-          <p>Spot 보유 자산</p>
-        </section>
-        <section className="summary-card">
-          <div className="eyebrow">MARKET EXPLORER</div>
-          <h2>
-            Market <span className="green">⌁</span>
-          </h2>
-          <p>마켓별 캔들 · 거래량</p>
-          <button className="text-button" onClick={onChart}>
-            차트 살펴보기 →
-          </button>
-        </section>
-      </div>
       <section className="panel">
         <div className="panel-heading">
           <div>
@@ -81,13 +84,13 @@ function SpotAssets({ onChart, onTransfer }: AssetActions) {
             className="search"
             placeholder="⌕  자산 검색"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
           />
           <label className="checkbox">
             <input
               type="checkbox"
               checked={hideZero}
-              onChange={(e) => setHideZero(e.target.checked)}
+              onChange={(e) => onFiltersChange({ ...filters, hideZero: e.target.checked })}
             />{" "}
             잔고 없는 자산 숨기기
           </label>
@@ -140,13 +143,14 @@ function SpotAssets({ onChart, onTransfer }: AssetActions) {
 function FuturesAssets({
   account,
   title,
+  filters,
+  onFiltersChange,
 }: {
   account: FuturesAccount;
   title: string;
-}) {
+} & AssetFilterControls) {
   const query = useQuery<FuturesAsset[]>("binance_futures_assets", { account });
-  const [search, setSearch] = useState("");
-  const [hideZero, setHideZero] = useState(true);
+  const { search, hideZero } = filters;
   const visible = (query.data ?? []).filter(
     (asset) =>
       asset.currency.includes(search.toUpperCase()) &&
@@ -183,13 +187,13 @@ function FuturesAssets({
           className="search"
           placeholder="⌕  자산 검색"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => onFiltersChange({ ...filters, search: event.target.value })}
         />
         <label className="checkbox">
           <input
             type="checkbox"
             checked={hideZero}
-            onChange={(event) => setHideZero(event.target.checked)}
+            onChange={(event) => onFiltersChange({ ...filters, hideZero: event.target.checked })}
           />{" "}
           잔고 없는 자산 숨기기
         </label>

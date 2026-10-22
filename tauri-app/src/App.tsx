@@ -7,7 +7,7 @@ import {
   defaultExchange,
   exchangeName,
 } from "./exchanges";
-import { Assets } from "./trading_asset";
+import { Assets, useAssetViewState } from "./trading_asset";
 import { Chart } from "./features/Chart";
 import { Transfers } from "./features/Transfers";
 import "./App.css";
@@ -15,13 +15,13 @@ import "./App.css";
 export default function App() {
   const [exchange, setExchange] = useState<Exchange>(defaultExchange);
   const [tab, setTab] = useState("overview");
+  const [assetViewState, setAssetViewState] = useAssetViewState();
   const [locked, setLocked] = useState(false);
   const [transferCurrency, setTransferCurrency] = useState("BTC");
   const status = useQuery<{ exchange: Exchange; configured: boolean }[]>(
     "connection_status",
     {},
   );
-  const ready = status.data?.find((s) => s.exchange === exchange)?.configured;
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -82,6 +82,8 @@ export default function App() {
             {tab === "overview" && (
               <Assets
                 exchange={exchange}
+                viewState={assetViewState}
+                onViewStateChange={setAssetViewState}
                 onChart={() => setTab("chart")}
                 onTransfer={(currency = "BTC") => {
                   setTransferCurrency(currency);

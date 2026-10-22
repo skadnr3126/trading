@@ -1,13 +1,12 @@
-import { useState } from "react";
 import { type Asset, useQuery } from "../api";
 import { exchanges, exchangeName } from "../exchanges";
 import { type AssetActions } from "./contracts";
+import { type AssetFilterControls } from "./view_state";
 
-export function BithumbAsset({ onChart, onTransfer }: AssetActions) {
+export function BithumbAsset({ onChart, onTransfer, filters, onFiltersChange }: AssetActions & AssetFilterControls) {
   const exchange = "bithumb";
   const q = useQuery<Asset[]>("assets", { exchange });
-  const [search, setSearch] = useState("");
-  const [hideZero, setHideZero] = useState(true);
+  const { search, hideZero } = filters;
   const visible = (q.data ?? []).filter(
     (a) =>
       a.currency.includes(search.toUpperCase()) &&
@@ -15,39 +14,6 @@ export function BithumbAsset({ onChart, onTransfer }: AssetActions) {
   );
   return (
     <>
-      <div className="summary-grid">
-        <section className="summary-card accent">
-          <div className="eyebrow">CONNECTED EXCHANGE</div>
-          <h2>
-            {exchangeName(exchange)} <span>↗</span>
-          </h2>
-          <p>{exchanges[exchange].accountDescription}</p>
-          <button className="text-button" onClick={() => onTransfer()}>
-            입출금 바로가기 →
-          </button>
-        </section>
-        <section className="summary-card">
-          <div className="eyebrow">ASSETS HELD</div>
-          <h2>
-            {q.data
-              ? q.data.filter((a) => Number(a.available) + Number(a.locked) > 0)
-                  .length
-              : "—"}{" "}
-            <small>종</small>
-          </h2>
-          <p>보유 중인 자산</p>
-        </section>
-        <section className="summary-card">
-          <div className="eyebrow">MARKET EXPLORER</div>
-          <h2>
-            Market <span className="green">⌁</span>
-          </h2>
-          <p>마켓별 캔들 · 거래량</p>
-          <button className="text-button" onClick={onChart}>
-            차트 살펴보기 →
-          </button>
-        </section>
-      </div>
       <section className="panel">
         <div className="panel-heading">
           <div>
@@ -66,13 +32,13 @@ export function BithumbAsset({ onChart, onTransfer }: AssetActions) {
             className="search"
             placeholder="⌕  자산 검색"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
           />
           <label className="checkbox">
             <input
               type="checkbox"
               checked={hideZero}
-              onChange={(e) => setHideZero(e.target.checked)}
+              onChange={(e) => onFiltersChange({ ...filters, hideZero: e.target.checked })}
             />{" "}
             잔고 없는 자산 숨기기
           </label>

@@ -1,5 +1,4 @@
 import { type Asset, useQuery } from "../api";
-import { exchanges, exchangeName } from "../exchanges";
 import { type AssetActions } from "./contracts";
 import { type FuturesAccount, type FuturesAsset } from "./binance_contracts";
 import { type AssetFilterControls, type BinanceAssetAccount, type BinanceAssetViewState } from "./view_state";
@@ -10,7 +9,11 @@ const accounts: { id: BinanceAssetAccount; label: string }[] = [
   { id: "coinM", label: "COIN-M 자산" },
 ];
 
-export function BinanceAsset({ onChart, onTransfer, viewState, onViewStateChange }: AssetActions & {
+export function BinanceAsset({
+  onTransfer,
+  viewState,
+  onViewStateChange,
+}: AssetActions & {
   viewState: BinanceAssetViewState;
   onViewStateChange: (state: BinanceAssetViewState) => void;
 }) {
@@ -36,9 +39,8 @@ export function BinanceAsset({ onChart, onTransfer, viewState, onViewStateChange
           </button>
         ))}
       </div>
-       
       {account === "spot" ? (
-        <SpotAssets onChart={onChart} onTransfer={onTransfer} {...filterControls} />
+        <SpotAssets onTransfer={onTransfer} {...filterControls} />
       ) : (
         <FuturesAssets
           key={account}
@@ -55,7 +57,11 @@ export function BinanceAsset({ onChart, onTransfer, viewState, onViewStateChange
   );
 }
 
-function SpotAssets({ onChart, onTransfer, filters, onFiltersChange }: AssetActions & AssetFilterControls) {
+function SpotAssets({
+  onTransfer,
+  filters,
+  onFiltersChange,
+}: AssetActions & AssetFilterControls) {
   const exchange = "binance";
   const q = useQuery<Asset[]>("assets", { exchange });
   const { search, hideZero } = filters;
@@ -117,7 +123,7 @@ function SpotAssets({ onChart, onTransfer, filters, onFiltersChange }: AssetActi
                   <td className="right mono muted">{a.locked}</td>
                   <td className="right">
                     <button
-                      disabled={a.currency === "KRW"}
+                      
                       className="text-button"
                       onClick={() => onTransfer(a.currency)}
                     >

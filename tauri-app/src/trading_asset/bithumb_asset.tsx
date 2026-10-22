@@ -1,9 +1,12 @@
 import { type Asset, useQuery } from "../api";
-import { exchanges, exchangeName } from "../exchanges";
 import { type AssetActions } from "./contracts";
 import { type AssetFilterControls } from "./view_state";
 
-export function BithumbAsset({ onChart, onTransfer, filters, onFiltersChange }: AssetActions & AssetFilterControls) {
+export function BithumbAsset({
+  onTransfer,
+  filters,
+  onFiltersChange,
+}: AssetActions & AssetFilterControls) {
   const exchange = "bithumb";
   const q = useQuery<Asset[]>("assets", { exchange });
   const { search, hideZero } = filters;
@@ -65,7 +68,7 @@ export function BithumbAsset({ onChart, onTransfer, filters, onFiltersChange }: 
                   <td className="right mono muted">{a.locked}</td>
                   <td className="right">
                     <button
-                      disabled={a.currency === "KRW"}
+                      
                       className="text-button"
                       onClick={() => onTransfer(a.currency)}
                     >

@@ -84,7 +84,6 @@ export default function App() {
                 exchange={exchange}
                 viewState={assetViewState}
                 onViewStateChange={setAssetViewState}
-                onChart={() => setTab("chart")}
                 onTransfer={(currency = "BTC") => {
                   setTransferCurrency(currency);
                   setTab("transfer");

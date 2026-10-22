@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   type Market,
   type Network,
@@ -13,14 +13,16 @@ import { History } from "./History";
 
 export function Transfers({
   exchange,
-  initialCurrency,
+  currencyInput,
+  onCurrencyChange,
   onBusy,
 }: {
   exchange: Exchange;
-  initialCurrency: string;
+  currencyInput: string;
+  onCurrencyChange: (currency: string) => void;
   onBusy: (busy: boolean) => void;
 }) {
-  const [currency, setCurrency] = useState(initialCurrency);
+  const currencyListId = useId();
   const [network, setNetwork] = useState("");
   const [mode, setMode] = useState("deposit");
   const [busy, setBusy] = useState(false);
@@ -28,14 +30,11 @@ export function Transfers({
     currency: string;
     kind: "deposit" | "withdraw";
     nonce: number;
-  }>({ currency: initialCurrency, kind: "deposit", nonce: 0 });
+  } | null>(null);
   const markets = useQuery<Market[]>("markets", { exchange });
-  const networks = useQuery<Network[]>("networks", { exchange, currency });
-  const selected = networks.data?.find((n) => n.id === network);
   const currencies = [
     ...new Set([
       "BTC",
-      initialCurrency,
       "ETH",
       "XRP",
       "USDT",
@@ -44,12 +43,22 @@ export function Transfers({
   ]
     .filter((c) => c !== "KRW")
     .sort();
+  const normalizedCurrency = currencyInput.trim().toUpperCase();
+  const currency = currencies.includes(normalizedCurrency) ? normalizedCurrency : "";
+  const networks = useQuery<Network[]>(
+    "networks",
+    { exchange, currency },
+    currency !== "",
+  );
+  const selected = currency
+    ? networks.data?.find((n) => n.id === network)
+    : undefined;
   const setWorking = (value: boolean) => {
     setBusy(value);
     onBusy(value);
   };
   const showHistory = (asset: string, kind: "deposit" | "withdraw") => {
-    setHistory((h) => ({ currency: asset, kind, nonce: h.nonce + 1 }));
+    setHistory((h) => ({ currency: asset, kind, nonce: (h?.nonce ?? 0) + 1 }));
   };
   return (
     <>
@@ -80,28 +89,37 @@ export function Transfers({
           <div className="form-grid">
             <label>
               자산
-              <select
-                value={currency}
+              <input
+                list={currencyListId}
+                value={currencyInput}
+                placeholder="자산 검색 (예: BTC, ETH)"
+                autoComplete="off"
+                spellCheck={false}
                 disabled={busy}
                 onChange={(e) => {
-                  setCurrency(e.target.value);
+                  const next = e.target.value.trim().toUpperCase();
+                  onCurrencyChange(next);
+                  if (next === currency) return;
                   setNetwork("");
-                  showHistory(
-                    e.target.value,
-                    mode === "withdraw" ? "withdraw" : "deposit",
-                  );
+                  if (currencies.includes(next)) {
+                    showHistory(
+                      next,
+                      mode === "withdraw" ? "withdraw" : "deposit",
+                    );
+                  }
                 }}
-              >
+              />
+              <datalist id={currencyListId}>
                 {currencies.map((c) => (
-                  <option key={c}>{c}</option>
+                  <option key={c} value={c} />
                 ))}
-              </select>
+              </datalist>
             </label>
             <label>
               네트워크
               <select
                 value={selected?.id ?? ""}
-                disabled={busy || networks.loading}
+                disabled={busy || !currency || networks.loading}
                 onChange={(e) => setNetwork(e.target.value)}
               >
                 <option value="" disabled>
@@ -115,6 +133,9 @@ export function Transfers({
               </select>
             </label>
           </div>
+          {!currency && (
+            <p className="muted">목록에서 자산을 선택하거나 심볼을 끝까지 입력하세요.</p>
+          )}
           {networks.error && (
             <div className="notice error">
               {networks.error.message}{" "}
@@ -151,9 +172,9 @@ export function Transfers({
       </section>
       <History
         exchange={exchange}
-        currency={history.currency}
-        initialKind={history.kind}
-        nonce={history.nonce}
+        currency={history?.currency ?? currency}
+        initialKind={history?.kind ?? "deposit"}
+        nonce={history?.nonce ?? 0}
         busy={busy}
       />
       <p className="footnote">

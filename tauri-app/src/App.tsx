@@ -94,7 +94,8 @@ export default function App() {
             {tab === "transfer" && (
               <Transfers
                 exchange={exchange}
-                initialCurrency={transferCurrency}
+                currencyInput={transferCurrency}
+                onCurrencyChange={setTransferCurrency}
                 onBusy={setLocked}
               />
             )}

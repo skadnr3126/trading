@@ -68,7 +68,6 @@ export function BithumbAsset({
                   <td className="right mono muted">{a.locked}</td>
                   <td className="right">
                     <button
-                      
                       className="text-button"
                       onClick={() => onTransfer(a.currency)}
                     >

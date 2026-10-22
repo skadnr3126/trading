@@ -47,7 +47,7 @@ function HistoryPage({
   const q = useQuery<HistoryEntry[]>(
     "history",
     { exchange, currency, kind, page },
-    !busy,
+    !busy && currency !== "",
   );
   const date = (value: string) => {
     const d = new Date(/^\d+$/.test(value) ? Number(value) : value);
@@ -78,7 +78,7 @@ function HistoryPage({
               </button>
             ))}
           </div>
-          <button disabled={busy || q.loading} onClick={q.refresh}>
+          <button disabled={busy || q.loading || currency === ""} onClick={q.refresh}>
             ↻ 새로고침
           </button>
         </div>

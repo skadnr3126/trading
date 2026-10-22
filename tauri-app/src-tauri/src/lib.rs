@@ -13,6 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection_status,
             commands::assets,
+            commands::binance_futures_assets,
             commands::markets,
             commands::candles,
             commands::networks,

@@ -1,7 +1,10 @@
 use crate::{
     contracts::*,
     error::{AppError, Result},
-    exchanges::Exchanges,
+    exchanges::{
+        Exchanges,
+        binance::{FuturesAccount, FuturesAsset},
+    },
 };
 use tauri::State;
 #[tauri::command]
@@ -20,6 +23,13 @@ pub async fn assets(state: State<'_, Exchanges>, exchange: Exchange) -> Result<V
         Exchange::Bithumb => state.bithumb.assets().await,
         Exchange::Binance => state.binance.assets().await,
     }
+}
+#[tauri::command]
+pub async fn binance_futures_assets(
+    state: State<'_, Exchanges>,
+    account: FuturesAccount,
+) -> Result<Vec<FuturesAsset>> {
+    state.binance.futures_assets(account).await
 }
 #[tauri::command]
 pub async fn markets(state: State<'_, Exchanges>, exchange: Exchange) -> Result<Vec<Market>> {

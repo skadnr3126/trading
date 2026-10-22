@@ -1,6 +1,62 @@
 // Opt-in integration checks. Only read endpoints; no address creation or withdrawals.
+use super::binance::FuturesAccount;
 use super::*;
 use crate::contracts::HistoryKind;
+
+#[tokio::test]
+#[ignore]
+async fn live_binance_assets_spot() {
+    let e = Exchanges::new();
+    assert!(e.binance.ready(), "Binance credentials not configured");
+    let assets = e
+        .binance
+        .assets()
+        .await
+        .expect("Spot authenticated asset lookup");
+    for asset in assets {
+        assert!(!asset.currency.is_empty(), "Spot asset currency missing");
+        assert!(
+            rust_decimal::Decimal::from_str_exact(&asset.available).is_ok(),
+            "Invalid Spot available balance"
+        );
+        assert!(
+            rust_decimal::Decimal::from_str_exact(&asset.locked).is_ok(),
+            "Invalid Spot locked balance"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_binance_assets_usdt_m() {
+    let e = Exchanges::new();
+    assert!(e.binance.ready(), "Binance credentials not configured");
+    let assets = e
+        .binance
+        .futures_assets(FuturesAccount::UsdtM)
+        .await
+        .expect("USDT-M authenticated asset lookup");
+    assert!(
+        assets.iter().all(|asset| !asset.currency.is_empty()),
+        "USDT-M asset currency missing"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_binance_assets_coin_m() {
+    let e = Exchanges::new();
+    assert!(e.binance.ready(), "Binance credentials not configured");
+    let assets = e
+        .binance
+        .futures_assets(FuturesAccount::CoinM)
+        .await
+        .expect("COIN-M authenticated asset lookup");
+    assert!(
+        assets.iter().all(|asset| !asset.currency.is_empty()),
+        "COIN-M asset currency missing"
+    );
+}
 #[tokio::test]
 #[ignore]
 async fn live_bithumb_read_only() {

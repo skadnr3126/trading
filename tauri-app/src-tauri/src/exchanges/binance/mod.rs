@@ -1,4 +1,5 @@
 mod auth;
+mod futures;
 mod market;
 mod wallet;
 mod withdrawals;
@@ -9,6 +10,7 @@ use crate::{
     review::Tickets,
     transport::*,
 };
+pub use futures::{FuturesAccount, FuturesAsset};
 use hmac::{Hmac, Mac};
 use reqwest::Method;
 use rust_decimal::Decimal;

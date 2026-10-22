@@ -1052,3 +1052,8 @@ footer span {
     grid-template-columns: 95px minmax(0, 1fr);
   }
 }
+.binance-assets {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
